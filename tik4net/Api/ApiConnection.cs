@@ -12,7 +12,7 @@ using System.Threading;
 
 namespace tik4net.Api
 {  
-    internal sealed class ApiConnection : ITikConnection
+    public sealed class ApiConnection : ITikConnection
     {
         ///// <summary>
         ///// Version of the login process. See https://wiki.mikrotik.com/wiki/Manual:API#Initial_login
@@ -86,6 +86,7 @@ namespace tik4net.Api
         public bool IsSsl
         {
             get { return _isSsl; }
+            set { _isSsl = value; }
         }
 
         public ApiConnection(bool isSsl)
