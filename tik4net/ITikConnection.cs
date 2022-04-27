@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Authentication;
 using System.Text;
 using System.Threading;
 
@@ -99,7 +100,7 @@ namespace tik4net
         /// <exception cref="TikCommandTrapException">Some other Tik4Net error.</exception>
         /// <exception cref="TikCommandFatalException">!fatal returned from API call.</exception>
         /// <exception cref="TikCommandUnexpectedResponseException">Unexpected response from mikrotik (multiple returned rows, missing !done row etc.)</exception>
-        void Open(string host, int port, string user, string password);
+        void Open(string host, int port, string user, string password, SslProtocols sslProtocol = SslProtocols.Tls);
 
         /// <summary>
         /// Opens connection to the specified mikrotik host on default port (depends on technology) and perform the logon operation.
