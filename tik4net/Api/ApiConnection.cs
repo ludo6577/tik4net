@@ -12,7 +12,7 @@ using System.Threading;
 
 namespace tik4net.Api
 {  
-    internal sealed class ApiConnection : ITikConnection
+    public sealed class ApiConnection : ITikConnection
     {
         ///// <summary>
         ///// Version of the login process. See https://wiki.mikrotik.com/wiki/Manual:API#Initial_login
@@ -86,6 +86,7 @@ namespace tik4net.Api
         public bool IsSsl
         {
             get { return _isSsl; }
+            set { _isSsl = value; }
         }
 
         public ApiConnection(bool isSsl)
@@ -131,10 +132,17 @@ namespace tik4net.Api
 
         public void Open(string host, string user, string password)
         {
-            Open(host, _isSsl ? APISSL_DEFAULT_PORT : API_DEFAULT_PORT, user, password);
+            try
+            {
+                Open(host, _isSsl ? APISSL_DEFAULT_PORT : API_DEFAULT_PORT, user, password);
+            }
+            catch (Exception e)
+            {
+                Open(host, _isSsl ? APISSL_DEFAULT_PORT : API_DEFAULT_PORT, user, password, SslProtocols.Tls12);
+            }
         }
 
-        public void Open(string host, int port, string user, string password)
+        public void Open(string host, int port, string user, string password, SslProtocols sslProtocol = SslProtocols.Tls)
         {
             //open connection
             _tcpConnection = new TcpClient();
@@ -160,7 +168,7 @@ namespace tik4net.Api
 
                 try
                 {
-                    sslStream.AuthenticateAsClientAsync(host, null, SslProtocols.Tls, false).GetAwaiter().GetResult();
+                    sslStream.AuthenticateAsClientAsync(host, null, sslProtocol, false).GetAwaiter().GetResult();
                 }
                 catch(AuthenticationException ex)
                 {
