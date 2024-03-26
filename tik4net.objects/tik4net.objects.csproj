@@ -1,12 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <TargetFramework>net8.0</TargetFramework>
   </PropertyGroup>
    <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
      <OutputType>Library</OutputType>
    </PropertyGroup>
    <PropertyGroup>
-     <TargetFrameworks>netstandard2.0;netstandard2.1</TargetFrameworks>
      <Description>Mikrotik API library - O/R mapper API</Description>
      <Authors>Daniel Frantik</Authors>
      <Copyright>Copyright (C) Daniel Frantik 2017</Copyright>
