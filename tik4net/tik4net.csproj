@@ -1,23 +1,34 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>tik4net</AssemblyName>
+    <RootNamespace>tik4net</RootNamespace>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <PackageId>tik4net</PackageId>
+    <VersionPrefix>3.6.0</VersionPrefix>
+    <AssemblyVersion>$(VersionPrefix).0</AssemblyVersion>
+    <FileVersion>$(VersionPrefix).0</FileVersion>
+    <VersionSuffix Condition=" '$(BUILD_BUILDNUMBER)' != '' ">CI-$(BUILD_BUILDNUMBER)</VersionSuffix>
+    <VersionSuffix Condition=" '$(PREVIEW_NUMBER)' != '' ">pre-$(PREVIEW_NUMBER)</VersionSuffix>
+    <Authors>Daniel Frantik</Authors>
+    <Copyright>Copyright (C) Daniel Frantik 2024</Copyright>
+    <Description>Manage MikroTik routers with .NET C# code via an ADO.NET-like low-level API. Part of the tik4net library.</Description>
+    <PackageTags>Mikrotik Library API CSharp .NET Manage</PackageTags>
+    <PackageProjectUrl>https://github.com/danikf/tik4net</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/danikf/tik4net</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageOutputPath>../Build</PackageOutputPath>
   </PropertyGroup>
-   <PropertyGroup>
-     <Description>Mikrotik API library</Description>
-     <Authors>Daniel Frantik</Authors>
-     <Copyright>Copyright (C) Daniel Frantik 2017</Copyright>
-     <PackageTags>Mikrotik</PackageTags>
-     <PackageOutputPath>../Build</PackageOutputPath>
-     <VersionPrefix>3.0.0</VersionPrefix>
-     <VersionSuffix Condition=" '$(BUILD_BUILDNUMBER)' != '' ">CI-$(BUILD_BUILDNUMBER)</VersionSuffix>
-     <VersionSuffix Condition=" '$(PREVIEW_NUMBER)' != '' ">pre-$(PREVIEW_NUMBER)</VersionSuffix>
-     <AssemblyName>tik4net</AssemblyName>
-     <RootNamespace>tik4net</RootNamespace>
-     <GenerateDocumentationFile>True</GenerateDocumentationFile>
-   </PropertyGroup>
-   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
-     <DefineConstants>TRACE;DEBUG</DefineConstants>
-     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
-   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="../LICENSE" Pack="true" PackagePath="\" />
+    <None Include="../README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <DefineConstants>TRACE;DEBUG</DefineConstants>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
 </Project>

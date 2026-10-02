@@ -22,6 +22,7 @@ namespace tik4net.tests
         [TestMethod]
         public void ListAllWirelessInterfaceWillNotFail()
         {
+            EnsureCommandAvailable("/interface/wireless");
             var list = Connection.LoadAll<InterfaceWireless>();
             Assert.IsNotNull(list);
         }
@@ -29,6 +30,7 @@ namespace tik4net.tests
         [TestMethod]
         public void ListAllWirelessRegistrationsWillNotFail()
         {
+            EnsureCommandAvailable("/interface/wireless");
             var list = Connection.LoadAll<WirelessRegistrationTable>();
             Assert.IsNotNull(list);
         }
@@ -123,10 +125,111 @@ namespace tik4net.tests
         [TestMethod]
         public void WirelessInterfaceResaveWillNotFail()
         {
-            var iface = Connection.LoadAll<InterfaceWireless>().First(wlan => wlan.Name == "wlan1");
+            EnsureCommandAvailable("/interface/wireless");
+            var iface = Connection.LoadAll<InterfaceWireless>().FirstOrDefault(wlan => wlan.Name == "wlan1");
+            if (iface == null)
+                Assert.Inconclusive("Interface wlan1 not found on this router.");
             iface.Comment = "test";
             Connection.Save(iface);
         }
+
+        #region LoadListenAsync
+
+        [TestMethod]
+        public void LoadListenAsync_DetectsInterfaceChange()
+        {
+            const string IFACE = "ether1";
+            const string TEST_COMMENT = "tik4net-listen-test";
+
+            List<Interface> changes = new List<Interface>();
+            Exception listenException = null;
+
+            var listenCmd = Connection.LoadListenAsync<Interface>(
+                iface => { lock (changes) changes.Add(iface); },
+                onDeletedCallback: null,
+                onExceptionCallback: ex => { listenException = ex; });
+
+            try
+            {
+                Thread.Sleep(500); // ensure listen is running
+
+                // trigger a change — set comment on ether1
+                var setCmd = Connection.CreateCommand("/interface/set");
+                setCmd.AddParameter(TikSpecialProperties.Id, IFACE);
+                setCmd.AddParameter("comment", TEST_COMMENT);
+                setCmd.ExecuteNonQuery();
+
+                Thread.Sleep(1500); // wait for !re callback
+
+                Assert.IsNull(listenException, "Unexpected listen error: " + listenException?.Message);
+                lock (changes)
+                    Assert.IsTrue(changes.Any(i => i.Name == IFACE),
+                        "Expected at least one change notification for " + IFACE);
+            }
+            finally
+            {
+                listenCmd.CancelAndJoin();
+
+                var cleanCmd = Connection.CreateCommand("/interface/set");
+                cleanCmd.AddParameter(TikSpecialProperties.Id, IFACE);
+                cleanCmd.AddParameter("comment", "");
+                cleanCmd.ExecuteNonQuery();
+            }
+        }
+
+        [TestMethod]
+        public void LoadListenAsync_DetectsDeletedItem()
+        {
+            const string TEST_IP = "192.0.2.1/32"; // TEST-NET, safe dummy address
+            const string TEST_IFACE = "ether1";
+
+            // create a dummy IP address to delete during the test
+            var addCmd = Connection.CreateCommandAndParameters("/ip/address/add",
+                TikCommandParameterFormat.NameValue,
+                "address", TEST_IP,
+                "interface", TEST_IFACE);
+            string newId = addCmd.ExecuteScalar();
+
+            List<string> deletedIds = new List<string>();
+            Exception listenException = null;
+
+            var listenCmd = Connection.LoadListenAsync<Objects.Ip.IpAddress>(
+                _ => { },
+                onDeletedCallback: id => { lock (deletedIds) deletedIds.Add(id); },
+                onExceptionCallback: ex => { listenException = ex; });
+
+            try
+            {
+                Thread.Sleep(500);
+
+                var removeCmd = Connection.CreateCommandAndParameters("/ip/address/remove",
+                    TikCommandParameterFormat.NameValue,
+                    TikSpecialProperties.Id, newId);
+                removeCmd.ExecuteNonQuery();
+
+                Thread.Sleep(1500);
+
+                Assert.IsNull(listenException, "Unexpected listen error: " + listenException?.Message);
+                lock (deletedIds)
+                    Assert.IsTrue(deletedIds.Contains(newId),
+                        "Expected deleted-item notification for id " + newId);
+            }
+            finally
+            {
+                listenCmd.CancelAndJoin();
+
+                // cleanup in case remove failed
+                try
+                {
+                    Connection.CreateCommandAndParameters("/ip/address/remove",
+                        TikCommandParameterFormat.NameValue,
+                        TikSpecialProperties.Id, newId).ExecuteNonQuery();
+                }
+                catch { }
+            }
+        }
+
+        #endregion
 
         [TestMethod]
         public void ParallelSniffCommandsAreCorrectlyCancelled()

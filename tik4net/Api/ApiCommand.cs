@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -194,10 +195,12 @@ namespace tik4net.Api
 
         private ApiSentence EnsureSingleResponse(IEnumerable<ApiSentence> response)
         {
-            if (response.Count() != 1)
+            // Ignore progress sentences (e.g. .section=0, .section=1) sent by long-running commands
+            // like /system/script/run — they contain only a .section word and precede the real !done.
+            if (response.Count(x => !(x.Words.Count == 1 && x.Words.ContainsKey(".section"))) != 1)
                 throw new TikCommandUnexpectedResponseException("Single response sentence expected.", this, response.Cast<ITikSentence>());
 
-            return response.Single();
+            return response.Last();
         }
 
         private void EnsureOneReAndDone(IEnumerable<ApiSentence> response)
@@ -266,9 +269,15 @@ namespace tik4net.Api
             {
                 string[] commandRows = ConstructCommandText(TikCommandParameterFormat.NameValue);
                 IEnumerable<ApiSentence> response = EnsureApiSentences(_connection.CallCommandSync(commandRows));
-                ThrowPossibleResponseError(response.ToArray());
+                var responseArray = response.ToArray();
 
-                ApiSentence responseSentence = EnsureSingleResponse(response);
+                // !fatal means the router closed the connection after executing the command
+                // (e.g. /system/reboot, /system/shutdown, /system/poweroff). Treat as success.
+                if (responseArray.Any(s => s is ApiFatalSentence))
+                    return;
+
+                ThrowPossibleResponseError(responseArray);
+                ApiSentence responseSentence = EnsureSingleResponse(responseArray);
                 EnsureDoneResponse(responseSentence);
             }
             finally
@@ -491,6 +500,7 @@ namespace tik4net.Api
         public IEnumerable<ITikReSentence> ExecuteListWithDuration(int durationSec, out bool wasAborted, out string abortReason)
         {
             string asyncExceptionMessage = null;
+            bool doneReceived = false;
             List<ITikReSentence> result = new List<ITikReSentence>();
             wasAborted = false;
             abortReason = null;
@@ -505,6 +515,10 @@ namespace tik4net.Api
                 error =>
                 {
                     asyncExceptionMessage = error.Message;
+                },
+                onDoneCallback: () =>
+                {
+                    doneReceived = true;
                 });
 
             //wait for results (in calling =UI? thread)
@@ -512,43 +526,84 @@ namespace tik4net.Api
             {
                 Thread.Sleep(100);
                 if (asyncExceptionMessage != null) //ended with exception
-                {                    
+                {
                     _isRuning = false;
                     wasAborted = true;
                     abortReason = asyncExceptionMessage;
                 }
-                if (!_connection.IsOpened) 
+                if (!_connection.IsOpened)
                 {
                     _isRuning = false;
                     wasAborted = true;
                     abortReason = "Connection has been closed";
                     return result;
                 }
-                if (!_isRuning) //already ended (cancelled froum outside?)
-                {                    
-                    wasAborted = true;
-                    abortReason = "Cancelled";
+                if (!_isRuning) //already ended
+                {
+                    if (!doneReceived)
+                    {
+                        wasAborted = true;
+                        abortReason = "Cancelled";
+                    }
                     return result;
                 }
-
             }
             CancelInternal(true, -1); //Join loading thread
 
             return result;
         }
 
+        public IEnumerable<ITikReSentence> ExecuteListUntilDone(int? timeoutSec = null)
+        {
+            ITikTrapSentence asyncTrap = null;
+            List<ITikReSentence> result = new List<ITikReSentence>();
+
+            ExecuteAsync(
+                reSentence =>
+                {
+                    if (_isRuning)
+                        result.Add(reSentence);
+                },
+                error =>
+                {
+                    asyncTrap = error;
+                },
+                onDoneCallback: null);
+
+            int steps = timeoutSec.HasValue ? timeoutSec.Value * 10 : int.MaxValue;
+            for (int i = 0; i < steps; i++) //step per 100ms
+            {
+                Thread.Sleep(100);
+                if (asyncTrap != null)
+                    throw new TikCommandTrapException(this, asyncTrap);
+                if (!_connection.IsOpened)
+                    throw new IOException("Connection has been closed.");
+                if (!_isRuning) //!done received
+                    return result;
+            }
+
+            // timeout elapsed — cancel and report
+            CancelInternal(true, -1);
+            throw new TikCommandAbortException(this, string.Format("Command did not finish within {0} second(s).", timeoutSec));
+        }
+
         private bool CancelInternal(bool joinLoadingThread, int milisecondsTimeout)
         {
             if (_isRuning && _asynchronouslyRunningTag >= 0)
             {
-                 ApiCommand cancellCommand = new ApiCommand(_connection, "/cancel", 
-                     new ApiCommandParameter("tag", _asynchronouslyRunningTag.ToString(), TikCommandParameterFormat.NameValue), // tag we are cancelling: REMARKS: =tag=1234 and not =.tag=1234 
-                     new ApiCommandParameter(TikSpecialProperties.Tag, "c_"+_asynchronouslyRunningTag.ToString(), TikCommandParameterFormat.Tag) //tag of cancell command itself
-                     );                
-                 cancellCommand.ExecuteNonQuery();
+                // Capture the thread reference BEFORE ExecuteNonQuery — the async thread may set
+                // _asyncLoadingThread to null when it processes its own !done, which can race with
+                // the /cancel response arriving and leaving _asyncLoadingThread null before we read it.
+                Thread loadingThread = _asyncLoadingThread;
+
+                ApiCommand cancellCommand = new ApiCommand(_connection, "/cancel",
+                    new ApiCommandParameter("tag", _asynchronouslyRunningTag.ToString(), TikCommandParameterFormat.NameValue), // tag we are cancelling: REMARKS: =tag=1234 and not =.tag=1234
+                    new ApiCommandParameter(TikSpecialProperties.Tag, "c_"+_asynchronouslyRunningTag.ToString(), TikCommandParameterFormat.Tag) //tag of cancell command itself
+                    );
+                cancellCommand.ExecuteNonQuery();
+
                 if (joinLoadingThread)
                 {
-                    Thread loadingThread = _asyncLoadingThread;
                     if (loadingThread != null)
                     {
                         if (milisecondsTimeout > 0)
